@@ -58,20 +58,38 @@ Currently `zsh-proxy` doesn't support proxy with authentication, but I am workin
 
 ### `proxy`
 
-After you configure the `zsh-proxy`, you are good to go. Try following command will enable proxy for supported package manager & software:
+After you configure the `zsh-proxy`, you are good to go. The following command enables the HTTP proxy for the shell and supported package managers:
 
 ```bash
 $ proxy
 ```
 
-And next time you open a new terminal, zsh-proxy will automatically enable proxy for you.
+And next time you open a new terminal, zsh-proxy will automatically enable the HTTP proxy for you. SOCKS is not enabled by this command.
 
 ### `noproxy`
 
-If you want to disable proxy, you can run following command:
+If you want to disable the HTTP proxy, you can run following command:
 
 ```bash
 $ noproxy
+```
+
+### `socksproxy`
+
+SOCKS is disabled by default and can be enabled independently:
+
+```bash
+$ socksproxy
+```
+
+This sets `ALL_PROXY` and `all_proxy` to the configured SOCKS proxy. The setting is restored automatically in new terminal sessions.
+
+### `nosocksproxy`
+
+Disable the SOCKS proxy without changing the HTTP proxy:
+
+```bash
+$ nosocksproxy
 ```
 
 ### `myip`
@@ -103,7 +121,7 @@ $ rm -rf ~/.zsh-proxy
 - `https_proxy`
 - `ftp_proxy`
 - `rsync_proxy`
-- `all_proxy`
+- `all_proxy` (only when `socksproxy` is enabled)
 - git (http)
 - npm & yarn
 - apt

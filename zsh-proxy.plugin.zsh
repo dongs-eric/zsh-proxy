@@ -13,10 +13,14 @@
 
 __read_proxy_config() {
 	__ZSHPROXY_STATUS=$(cat "${ZDOTDIR:-${HOME}}/.zsh-proxy/status")
+	if [ -f "${ZDOTDIR:-${HOME}}/.zsh-proxy/socks_status" ]; then
+		__ZSHPROXY_SOCKS_STATUS=$(cat "${ZDOTDIR:-${HOME}}/.zsh-proxy/socks_status")
+	else
+		__ZSHPROXY_SOCKS_STATUS="0"
+	fi
 	__ZSHPROXY_SOCKS5=$(cat "${ZDOTDIR:-${HOME}}/.zsh-proxy/socks5")
 	__ZSHPROXY_HTTP=$(cat "${ZDOTDIR:-${HOME}}/.zsh-proxy/http")
 	__ZSHPROXY_NO_PROXY=$(cat "${ZDOTDIR:-${HOME}}/.zsh-proxy/no_proxy")
-	__ZSHPROXY_GIT_PROXY_TYPE=$(cat "${ZDOTDIR:-${HOME}}/.zsh-proxy/git_proxy_type")
 }
 
 __check_whether_init() {
@@ -81,9 +85,6 @@ __config_proxy() {
 (comma separate domains): "
 	read -r __read_no_proxy
 
-	echo -n "[git proxy type] {Default as socks5}
-(socks5 or http): "
-	read -r __read_git_proxy_type
 	echo "========================================"
 
 	if [ -z "${__read_socks5}" ]; then
@@ -98,10 +99,6 @@ __config_proxy() {
 	if [ -z "${__read_no_proxy}" ]; then
 		__read_no_proxy="localhost,127.0.0.1,localaddress,.localdomain.com"
 	fi
-	if [ -z "${__read_git_proxy_type}" ]; then
-		__read_git_proxy_type="socks5"
-	fi
-
 	echo "http://${__read_http}" >"${ZDOTDIR:-${HOME}}/.zsh-proxy/http"
 	if [ "${__read_socks5_type}" = "2" ]; then
 		echo "socks5h://${__read_socks5}" >"${ZDOTDIR:-${HOME}}/.zsh-proxy/socks5"
@@ -109,7 +106,6 @@ __config_proxy() {
 		echo "socks5://${__read_socks5}" >"${ZDOTDIR:-${HOME}}/.zsh-proxy/socks5"
 	fi
 	echo "${__read_no_proxy}" >"${ZDOTDIR:-${HOME}}/.zsh-proxy/no_proxy"
-	echo "${__read_git_proxy_type}" >"${ZDOTDIR:-${HOME}}/.zsh-proxy/git_proxy_type"
 
 	__read_proxy_config
 }
@@ -138,7 +134,7 @@ __disable_proxy_apt() {
 
 # Proxy for terminal
 
-__enable_proxy_all() {
+__enable_proxy_http() {
 	# http_proxy
 	export http_proxy="${__ZSHPROXY_HTTP}"
 	export HTTP_PROXY="${__ZSHPROXY_HTTP}"
@@ -151,14 +147,11 @@ __enable_proxy_all() {
 	# rsync_proxy
 	export rsync_proxy="${__ZSHPROXY_HTTP}"
 	export RSYNC_PROXY="${__ZSHPROXY_HTTP}"
-	# all_proxy
-	export ALL_PROXY="${__ZSHPROXY_SOCKS5}"
-	export all_proxy="${__ZSHPROXY_SOCKS5}"
 
 	export no_proxy="${__ZSHPROXY_NO_PROXY}"
 }
 
-__disable_proxy_all() {
+__disable_proxy_http() {
 	unset http_proxy
 	unset HTTP_PROXY
 	unset https_proxy
@@ -167,21 +160,30 @@ __disable_proxy_all() {
 	unset FTP_PROXY
 	unset rsync_proxy
 	unset RSYNC_PROXY
+	if [ "${__ZSHPROXY_SOCKS_STATUS}" != "1" ]; then
+		unset no_proxy
+	fi
+}
+
+__enable_proxy_socks() {
+	export ALL_PROXY="${__ZSHPROXY_SOCKS5}"
+	export all_proxy="${__ZSHPROXY_SOCKS5}"
+	export no_proxy="${__ZSHPROXY_NO_PROXY}"
+}
+
+__disable_proxy_socks() {
 	unset ALL_PROXY
 	unset all_proxy
-	unset no_proxy
+	if [ "${__ZSHPROXY_STATUS}" != "1" ]; then
+		unset no_proxy
+	fi
 }
 
 # Proxy for Git
 
 __enable_proxy_git() {
-	if [ "${__ZSHPROXY_GIT_PROXY_TYPE}" = "http" ]; then
-		git config --global http.proxy "${__ZSHPROXY_HTTP}"
-		git config --global https.proxy "${__ZSHPROXY_HTTP}"
-	else
-		git config --global http.proxy "${__ZSHPROXY_SOCKS5}"
-		git config --global https.proxy "${__ZSHPROXY_SOCKS5}"
-	fi
+	git config --global http.proxy "${__ZSHPROXY_HTTP}"
+	git config --global https.proxy "${__ZSHPROXY_HTTP}"
 }
 
 __disable_proxy_git() {
@@ -229,7 +231,7 @@ __disable_proxy_npm() {
 # ==================================================
 
 __enable_proxy() {
-	if [ -z "${__ZSHPROXY_STATUS}" ] || [ -z "${__ZSHPROXY_SOCKS5}" ] || [ -z "${__ZSHPROXY_HTTP}" ]; then
+	if [ -z "${__ZSHPROXY_STATUS}" ] || [ -z "${__ZSHPROXY_HTTP}" ]; then
 		echo "========================================"
 		echo "zsh-proxy can not read -r configuration."
 		echo "You may have to reinitialize and reconfigure the plugin."
@@ -241,7 +243,7 @@ __enable_proxy() {
 	else
 		echo "========================================"
 		echo -n "Resetting proxy... "
-		__disable_proxy_all
+		__disable_proxy_http
 		__disable_proxy_git
 		__disable_proxy_npm
 		__disable_proxy_apt
@@ -249,7 +251,7 @@ __enable_proxy() {
 		echo "----------------------------------------"
 		echo "Enable proxy for:"
 		echo "- shell"
-		__enable_proxy_all
+		__enable_proxy_http
 		echo "- git"
 		__enable_proxy_git
 		# npm & yarn & pnpm"
@@ -261,15 +263,36 @@ __enable_proxy() {
 }
 
 __disable_proxy() {
-	__disable_proxy_all
+	__disable_proxy_http
 	__disable_proxy_git
 	__disable_proxy_npm
 	__disable_proxy_apt
 }
 
+__enable_socks_proxy() {
+	if [ -z "${__ZSHPROXY_SOCKS5}" ]; then
+		echo "zsh-proxy can not read the SOCKS configuration."
+		echo "Run config_proxy first."
+		return 1
+	fi
+
+	__enable_proxy_socks
+	echo "SOCKS proxy enabled: ${__ZSHPROXY_SOCKS5}"
+}
+
+__disable_socks_proxy() {
+	__disable_proxy_socks
+	echo "SOCKS proxy disabled."
+}
+
 __auto_proxy() {
 	if [ "${__ZSHPROXY_STATUS}" = "1" ]; then
-		__enable_proxy_all
+		__enable_proxy_http
+	fi
+	if [ "${__ZSHPROXY_SOCKS_STATUS}" = "1" ]; then
+		__enable_proxy_socks
+	else
+		__disable_proxy_socks
 	fi
 }
 
@@ -291,10 +314,11 @@ init_proxy() {
 	mkdir -p "${ZDOTDIR:-${HOME}}/.zsh-proxy"
 	touch "${ZDOTDIR:-${HOME}}/.zsh-proxy/status"
 	echo "0" >"${ZDOTDIR:-${HOME}}/.zsh-proxy/status"
+	touch "${ZDOTDIR:-${HOME}}/.zsh-proxy/socks_status"
+	echo "0" >"${ZDOTDIR:-${HOME}}/.zsh-proxy/socks_status"
 	touch "${ZDOTDIR:-${HOME}}/.zsh-proxy/http"
 	touch "${ZDOTDIR:-${HOME}}/.zsh-proxy/socks5"
 	touch "${ZDOTDIR:-${HOME}}/.zsh-proxy/no_proxy"
-	touch "${ZDOTDIR:-${HOME}}/.zsh-proxy/git_proxy_type"
 	echo "----------------------------------------"
 	echo "Great! The zsh-proxy is initialized"
 	echo ""
@@ -318,14 +342,29 @@ config_proxy() {
 
 proxy() {
 	echo "1" >"${ZDOTDIR:-${HOME}}/.zsh-proxy/status"
+	__ZSHPROXY_STATUS="1"
 	__enable_proxy
 	__check_ip
 }
 
 noproxy() {
 	echo "0" >"${ZDOTDIR:-${HOME}}/.zsh-proxy/status"
+	__ZSHPROXY_STATUS="0"
 	__disable_proxy
 	__check_ip
+}
+
+socksproxy() {
+	if __enable_socks_proxy; then
+		echo "1" >"${ZDOTDIR:-${HOME}}/.zsh-proxy/socks_status"
+		__ZSHPROXY_SOCKS_STATUS="1"
+	fi
+}
+
+nosocksproxy() {
+	echo "0" >"${ZDOTDIR:-${HOME}}/.zsh-proxy/socks_status"
+	__ZSHPROXY_SOCKS_STATUS="0"
+	__disable_socks_proxy
 }
 
 myip() {
